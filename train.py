@@ -12,7 +12,7 @@
 import os
 import torch
 from random import randint
-from utils.loss_utils import l1_loss, ssim
+from utils.loss_utils import l1_loss, ssim, anisotropic_loss
 from gaussian_renderer import render, network_gui
 import sys
 from scene import Scene, GaussianModel
@@ -125,13 +125,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
 
-        # Depth regularization
+        # Extract covariance matrices and apply anisotropic loss
+        cov_matrices = gaussians.get_covariance()
+        λ_aniso = opt.lambda_aniso if hasattr(opt, "lambda_aniso") else 0.01
+        loss += λ_aniso * anisotropic_loss(cov_matrices, r=3.0)
+
+        # Depth regularization (if enabled)
         Ll1depth_pure = 0.0
         if depth_l1_weight(iteration) > 0 and viewpoint_cam.depth_reliable:
             invDepth = render_pkg["depth"]
             mono_invdepth = viewpoint_cam.invdepthmap.cuda()
             depth_mask = viewpoint_cam.depth_mask.cuda()
-
             Ll1depth_pure = torch.abs((invDepth  - mono_invdepth) * depth_mask).mean()
             Ll1depth = depth_l1_weight(iteration) * Ll1depth_pure 
             loss += Ll1depth
@@ -267,6 +271,7 @@ if __name__ == "__main__":
     parser.add_argument('--disable_viewer', action='store_true', default=False)
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
+    parser.add_argument("--lambda_aniso", type=float, default=0.01, help="Weight for anisotropic regularization loss")
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     

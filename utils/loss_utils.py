@@ -43,6 +43,22 @@ def l1_loss(network_output, gt):
 def l2_loss(network_output, gt):
     return ((network_output - gt) ** 2).mean()
 
+def anisotropic_loss(cov_matrices, r=3.0):
+    """
+    Computes anisotropic regularization loss for Gaussian covariance matrices.
+    
+    Args:
+        cov_matrices (torch.Tensor): Shape (N, 3, 3) covariance matrices.
+        r (float): Threshold for anisotropy regularization.
+
+    Returns:
+        torch.Tensor: Anisotropic regularization loss.
+    """
+    eigvals = torch.linalg.eigvalsh(cov_matrices)  # Compute eigenvalues (N, 3)
+    ratio = eigvals[:, -1] / eigvals[:, 0]  # Largest / smallest eigenvalue ratio
+    loss = torch.relu(ratio - r).mean()  # Penalize ratios above r
+    return loss
+
 def gaussian(window_size, sigma):
     gauss = torch.Tensor([exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)])
     return gauss / gauss.sum()
